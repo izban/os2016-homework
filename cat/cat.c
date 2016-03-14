@@ -9,10 +9,15 @@ int main() {
 			return 1; // some error happened
 		}
 		if (readed == 0) {
-			return 0; // end of file, everything is fine
+			return 0; // end of input, everything is fine
 		}
-		if (write(STDOUT_FILENO, buf, readed) < 0) {
-			return 1; // some error happened
+		ssize_t already_writed = 0;
+		while (already_writed < readed) {
+			ssize_t writed = write(STDOUT_FILENO, buf + already_writed, readed - already_writed);
+			if (writed == -1) {
+				return 1; // some error happened
+			}
+			already_writed += writed;
 		}
 	}
 }
