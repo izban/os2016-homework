@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <iostream>
 
 using namespace std;
 
@@ -41,6 +42,10 @@ string inttostr(int x) {
 	return s;
 }
 
+bool isBadSymbol(char c) {
+	return c == '\"' || c == '\'' || c == '`';
+}
+
 vector<string> split(string s, char c) {
 	s += c;
 	vector<string> res;
@@ -52,12 +57,16 @@ vector<string> split(string s, char c) {
 			cur += s[i];
 			continue;
 		}
-		if (s[i] == '"' || s[i] == '\'') {
+		if (isBadSymbol(s[i])) {
 			lookForEnd = s[i];
+			cur += s[i];
 			continue;
 		}
 		if (s[i] == c) {
-			if (cur != "") res.push_back(cur);
+			if (cur != "") {
+				if (cur.length() > 2 && isBadSymbol(cur[0]) && isBadSymbol(cur[cur.length() - 1])) cur = cur.substr(1, (int)cur.length() - 2);
+				res.push_back(cur);
+			}
 			cur = "";
 		} else cur += s[i];
 	}

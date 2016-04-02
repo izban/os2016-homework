@@ -73,13 +73,16 @@ int main(int argc, char* argv[]) {
 		struct sockaddr_in peer_addr;
 		int cfd = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_size);
 		if (cfd < 0) error("can't accept"); // TODO: don't die
+
+	
 		const int MAX_COMMAND_LEN = 1 << 21;
 		char buf[MAX_COMMAND_LEN];
 		ssize_t readed = read_line(cfd, buf, MAX_COMMAND_LEN);
+	
 		if (readed < 0) {
 			string errmsg = "incorrect command syntax, no endline found\n";
 			write_all(STDOUT_FILENO, errmsg.c_str(), errmsg.length());
-			sendto(sfd, errmsg.c_str(), errmsg.length(), 0, (struct sockaddr *)&peer_addr, peer_addr_size);
+			sendto(cfd, errmsg.c_str(), errmsg.length(), 0, (struct sockaddr *)&peer_addr, peer_addr_size);
 		} else {
 			write_all(STDOUT_FILENO, buf, readed);
 			
@@ -89,7 +92,7 @@ int main(int argc, char* argv[]) {
 			
 			int cur_stdin = -1;
 			for (int i = 0; i < (int)commands.size(); i++) {
-				int pipefd[2];
+				int pipefd[2] = {0};
 				bool first = i == 0;
 				bool last = i + 1 == (int)commands.size();
 				if (!last && pipe(pipefd) < 0) error("can't make pipe");
@@ -99,9 +102,11 @@ int main(int argc, char* argv[]) {
 				if (cpid == 0) {
 					if (!last && close(pipefd[0]) < 0) error("can't close pipe read end");
 					if (!first && dup2(cur_stdin, STDIN_FILENO) < 0) error("error at trying to dup2 changing STDIN");
+					if (!first && close(cur_stdin) < 0) error("error at closing STDIN after dup2");
 					int fd_stdout = pipefd[1];
 					if (last) fd_stdout = cfd;
 					if (dup2(fd_stdout, STDOUT_FILENO) < 0) error("error at trying to dup2 changing STDOUT");
+					if (close(fd_stdout) < 0) error("error at closing STDOUT after dup2");
 
 					vector<string> vct = split(commands[i], ' ');
 					string name = vct[0];
