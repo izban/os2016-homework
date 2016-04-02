@@ -10,12 +10,14 @@
 #include <sys/un.h>
 #include <iostream>
 #include <netinet/in.h>
+#include <string>
 
 using namespace std;
 
 #define LISTEN_BACKLOG 50
 
 void error(string s) {
+	s += "\n";
 	write_all(STDERR_FILENO, s.c_str(), s.length());
 	exit(1);
 }
@@ -64,7 +66,7 @@ int main(int argc, char* argv[]) {
 	if (bind(sfd, (struct sockaddr *)&my_addr, sizeof(struct sockaddr_un)) < 0) error("can't bind");
 	if (listen(sfd, LISTEN_BACKLOG) == -1) error("can't start listening");
 
-	string started = "Server has been started";
+	string started = "Server has been started\n";
 	write_all(STDERR_FILENO, started.c_str(), started.length());
 	while (1) {
 		socklen_t peer_addr_size = sizeof(struct sockaddr_in);
@@ -75,11 +77,54 @@ int main(int argc, char* argv[]) {
 		char buf[MAX_COMMAND_LEN];
 		ssize_t readed = read_line(cfd, buf, MAX_COMMAND_LEN);
 		if (readed < 0) {
-			string errmsg = "incorrect command syntax, no endline found";
+			string errmsg = "incorrect command syntax, no endline found\n";
 			write_all(STDOUT_FILENO, errmsg.c_str(), errmsg.length());
-			continue;
+			sendto(sfd, errmsg.c_str(), errmsg.length(), 0, (struct sockaddr *)&peer_addr, peer_addr_size);
+		} else {
+			write_all(STDOUT_FILENO, buf, readed);
+			
+			buf[readed] = 0;
+			string s = split(buf, '\n')[0];
+			vector<string> commands = split(s, '|'); // TODO: can be bad at <<echo "|">>
+			
+			int cur_stdin = -1;
+			for (int i = 0; i < (int)commands.size(); i++) {
+				int pipefd[2];
+				bool first = i == 0;
+				bool last = i + 1 == (int)commands.size();
+				if (!last && pipe(pipefd) < 0) error("can't make pipe");
+
+				int cpid = fork(); // child write to pipe, right brother reads from pipe
+				if (cpid < 0) error("can't fork");
+				if (cpid == 0) {
+					if (!last && close(pipefd[0]) < 0) error("can't close pipe read end");
+					if (!first && dup2(cur_stdin, STDIN_FILENO) < 0) error("error at trying to dup2 changing STDIN");
+					int fd_stdout = pipefd[1];
+					if (last) fd_stdout = cfd;
+					if (dup2(fd_stdout, STDOUT_FILENO) < 0) error("error at trying to dup2 changing STDOUT");
+
+					vector<string> vct = split(commands[i], ' ');
+					string name = vct[0];
+					char ** arguments = new char*[(int)vct.size() + 1];
+					//cerr << commands[i] << endl;
+					for (int i = 0; i < (int)vct.size(); i++) {
+						//cerr << vct[i] << " ||| ";
+						arguments[i] = new char[(int)vct[i].length() + 1];
+						strcpy(arguments[i], vct[i].c_str());
+						arguments[i][vct[i].length()] = 0;
+					}
+					//cerr << endl;
+					arguments[vct.size()] = 0;
+					if (execvp(name.c_str(), arguments) < 0) error("can't run exec");
+				} else {
+					if (!first && close(cur_stdin) < 0) error("can't close old stdin");
+					if (!last && close(pipefd[1]) < 0) error("can't close pipe write end");
+					cur_stdin = pipefd[0];
+				}	
+			}
+			// send message	
 		}
-		write_all(STDOUT_FILENO, buf, readed);
+		close(cfd);
 	}	
 }
 
