@@ -19,7 +19,16 @@ ssize_t read_line(int fd, void *buf, size_t count) {
 		if (readed == 0) break;
 		int i;
 		for (i = 0; i < readed; i++)  was_delimeter |= ((char*)buf)[processed + i] == '\n';
+		processed += readed;
 	}
 	if (!was_delimeter) return -1;
 	return processed;
+}
+
+string inttostr(int x) {
+	stringstream ss;
+	string s;
+	ss << x;
+	ss >> s;
+	return s;
 }

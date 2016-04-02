@@ -1,3 +1,3 @@
 make clean
 make
-./netsh
+./netsh 1248
