@@ -172,7 +172,9 @@ int main(int argc, char* argv[]) {
 				} else {
 					ssize_t readed;
 					int endlinePos = -1;
+					int lastreaded = -1;
 					while ((readed = read(cfd, buf, MAX_COMMAND_LEN)) > 0) {
+						lastreaded = readed;
 						buf[readed] = 0;
 						bufs[cfd] += (string)(buf);
 						for (int i = readed - 1; i >= 0; i--) if (buf[i] == '\n') endlinePos = i;
@@ -228,7 +230,9 @@ int main(int argc, char* argv[]) {
 							cur_stdin = pipefd[0];
 						}	
 					}
-					write_all(pipe_write_end[cfd], buf + endlinePos, readed - endlinePos);
+					if (endlinePos + 1 < lastreaded) {
+						write_all(pipe_write_end[cfd], buf + endlinePos, lastreaded - endlinePos);
+					}
 				}	
 			}
 		}
