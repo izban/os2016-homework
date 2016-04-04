@@ -6,8 +6,25 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <sys/epoll.h>
+#include <functional>
 
 using namespace std;
+
+struct my_epoll_data {
+	int fd;
+	function<void(int)> f;
+
+	my_epoll_data(int fd, function<void(int)>f) : fd(fd), f(f) {}
+};
+
+ssize_t write_all(int, const void*, size_t);
+
+void error(string s, bool drop = true) {
+	s += "\n";
+	write_all(STDOUT_FILENO, s.c_str(), s.length());
+	if (drop) exit(1);
+}
 
 ssize_t write_all(int fd, const void *buf, size_t count) {
 	size_t processed = 0;
@@ -86,6 +103,23 @@ vector<string> split(string s, char c) {
 		} else cur += s[i];
 	}
 	return res;
+}
+
+int make_epoll(int MAX_CLIENTS) {
+	int epolfd = epoll_create(MAX_CLIENTS);
+	if (epolfd < 0) error("error at creating epoll");
+	return epolfd;
+}
+
+void my_ctl(int efd, int fd, int op, uint32_t events, function<void(int)> f) {
+	struct epoll_event *nev = new struct epoll_event();
+	nev->events = events;
+	nev->data.ptr = new my_epoll_data(fd, f);
+	if (epoll_ctl(efd, op, fd, nev) < 0) error("error at my_ctl");
+}
+
+void my_ctl_delete(int efd, int fd) {
+	if (epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL) < 0) error("can't close epoll " + inttostr(fd), 0);
 }
 
 #endif
