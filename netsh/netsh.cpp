@@ -67,7 +67,7 @@ void make_self_daemon() {
 	char buf_pid[20];
 	sprintf(buf_pid, "%d", pid_my);
 	int pid_len = strlen(buf_pid);
-	if (write_all(f, buf_pid, pid_len) < 0) error("can't write to file");
+	if (write_all(f, buf_pid, pid_len + 1) < 0) error("can't write to file");
 
 	if (close(f) < 0) error("can't close file /tmp/netsh.pid");
 }
@@ -149,7 +149,13 @@ int main(int argc, char* argv[]) {
 				struct sockaddr_in peer_addr;
 				int cfd = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_size);
 
-				if (cfd < 0) error("can't accept", 0); 
+				if (cfd < 0) {
+					if (errno == EINTR) {
+						n--; 
+						continue;
+					}
+					error("can't accept", 0); 
+				}
 
 				if (make_nonblocking(cfd) < 0) {
 					error("can't make nonblocking", 0);
@@ -171,7 +177,9 @@ int main(int argc, char* argv[]) {
 				if (already_execed[cfd]) {
 					ssize_t readed;
 					int pd = pipe_write_end[cfd];
-					while ((readed = read(cfd, buf, MAX_COMMAND_LEN)) > 0) {
+					while (1) {
+						readed = read_eintr(cfd, buf, MAX_COMMAND_LEN);
+						if (readed <= 0) break;
 						write_all(pd, buf, readed); // TODO: maybe should use epoll
 					}
 					bool done = 0;
@@ -193,7 +201,7 @@ int main(int argc, char* argv[]) {
 					ssize_t readed;
 					int endlinePos = -1;
 					int lastreaded = -1;
-					while ((readed = read(cfd, buf, MAX_COMMAND_LEN)) > 0) {
+					while ((readed = read_eintr(cfd, buf, MAX_COMMAND_LEN)) > 0) {
 						lastreaded = readed;
 						buf[readed] = 0;
 						bufs[cfd] += (string)(buf);
