@@ -13,6 +13,8 @@
 #include <string>
 #include <sys/epoll.h>
 #include <map>
+#include <signal.h>
+#include <sys/wait.h>
 
 using namespace std;
 
@@ -86,6 +88,18 @@ int open_socket(int port) {
 	return sfd;
 }
 
+map<int, int> close_cfd;
+
+void sigchld_handler(int signum, siginfo_t *info, void*) {
+	if (signum != SIGCHLD) error("caught unexpected signal");
+	int id = info->si_pid;
+	waitpid(id, NULL, 0);
+	if (close_cfd.count(id)) {
+		close(close_cfd[id]);
+		close_cfd.erase(id);
+	}
+}
+
 int main(int argc, char* argv[]) {
 	make_self_daemon();
 
@@ -96,9 +110,6 @@ int main(int argc, char* argv[]) {
 
 	int sfd = open_socket(port);
 
-	string started = "Server has been started\n";
-	write_all(STDERR_FILENO, started.c_str(), started.length());
-
 	struct epoll_event ev, events[MAX_CLIENTS];
 	int epolfd = epoll_create(MAX_CLIENTS);
 	if (epolfd < 0) error("error at creating epoll");
@@ -106,7 +117,16 @@ int main(int argc, char* argv[]) {
 	ev.events = EPOLLIN;
 	ev.data.fd = sfd;
 	if (epoll_ctl(epolfd, EPOLL_CTL_ADD, sfd, &ev) < 0) error("error at epoll_ctl");
+
+	struct sigaction saction;
+	saction.sa_sigaction = &sigchld_handler;
+	saction.sa_flags = SA_SIGINFO;
+	if (sigaction(SIGCHLD, &saction, NULL) < 0) error("can't make SIGCHLD handler");
 	
+
+	string started = "Server has been started\n";
+	write_all(STDERR_FILENO, started.c_str(), started.length());
+
 	map<int, int> ttype; // map from fd to its type (1 -- sfd, 2 -- socket, 3 -- end of pipe)
 	map<int, string> bufs; // buffer with readed info for each fd
 	map<int, bool> already_execed; // if socket was execed already
@@ -114,9 +134,9 @@ int main(int argc, char* argv[]) {
 
 	ttype[sfd] = 1;
 	while (1) {
-
 		int nfds = epoll_wait(epolfd, events, MAX_CLIENTS, -1);
 		if (nfds < 0) {
+			if (errno == EINTR) continue;
 			error("error after epoll_wait", 1); // can drop now
 			continue;
 		}
@@ -203,13 +223,13 @@ int main(int argc, char* argv[]) {
 						int cpid = fork(); // child write to pipe, right brother reads from pipe
 						if (cpid < 0) error("can't fork");
 						if (cpid == 0) {
-							if (!last && close(pipefd[0]) < 0) error("can't close pipe read end", 0);
-							if (dup2(cur_stdin, STDIN_FILENO) < 0) error("error at trying to dup2 changing STDIN", 0);
-							if (close(cur_stdin) < 0) error("error at closing STDIN after dup2", 0);
+							if (!last && close(pipefd[0]) < 0) error("can't close pipe read end");
+							if (dup2(cur_stdin, STDIN_FILENO) < 0) error("error at trying to dup2 changing STDIN");
+							close(cur_stdin);
 							int fd_stdout = pipefd[1];
 							if (last) fd_stdout = cfd;
-							if (dup2(fd_stdout, STDOUT_FILENO) < 0) error("error at trying to dup2 changing STDOUT", 0);
-							if (close(fd_stdout) < 0) error("error at closing STDOUT after dup2", 0);
+							if (dup2(fd_stdout, STDOUT_FILENO) < 0) error("error at trying to dup2 changing STDOUT");
+							close(fd_stdout);
 
 							vector<string> vct = split(commands[i], ' ');
 							string name = vct[0];
@@ -223,10 +243,11 @@ int main(int argc, char* argv[]) {
 							}
 							//cerr << endl;
 							arguments[vct.size()] = 0;
-							if (execvp(name.c_str(), arguments) < 0) error("can't run exec", 0);
+							if (execvp(name.c_str(), arguments) < 0) error("can't run exec");
 						} else {
-							if (close(cur_stdin) < 0) error("can't close old stdin", 0);
-							if (!last && close(pipefd[1]) < 0) error("can't close pipe write end", 0);
+							close(cur_stdin);
+							if (!last) close(pipefd[1]) < 0;
+							if (last) close_cfd[cpid] = cfd;
 							cur_stdin = pipefd[0];
 						}	
 					}
