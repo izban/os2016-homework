@@ -14,3 +14,4 @@ echo "cat /proc/cpuinfo | grep 'model name' | sed -re 's/.*: (.*)/\1/' | uniq" |
 (echo "sh"; echo "cat"; echo "I am cat, meow"; sleep 0.1) | socat STDIO TCP:localhost:$port #take care that it SHOULD NOT print "I am cat, meow" because it is how sh work
 (echo "sh"; echo "cat"; sleep 0.1; echo "I am cat, meow"; sleep 0.1) | socat STDIO TCP:localhost:$port
 (echo "ls"; sleep 1.0; echo "ls") | nc localhost $port
+(echo "echo \"echo \"Inception\"\" | socat STDIO TCP:localhost:$port") | socat STDIO TCP:localhost:$port

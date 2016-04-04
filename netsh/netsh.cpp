@@ -117,7 +117,6 @@ int main(int argc, char* argv[]) {
 	string started = "Server has been started\n";
 	write_all(STDERR_FILENO, started.c_str(), started.length());
 
-	map<int, int> ttype; // map from fd to its type (1 -- sfd, 2 -- socket, 3 -- end of pipe)
 	map<int, string> bufs; // buffer with readed info for each fd
 	map<int, bool> already_execed; // if socket was execed already
 	map<int, int> pipe_write_end; // if socket was execed already, its pipe write end
@@ -165,7 +164,6 @@ int main(int argc, char* argv[]) {
 					my_ctl_delete(epolfd, cfd);
 					close(cfd);
 					bufs.erase(cfd);
-					ttype.erase(cfd);
 					already_execed.erase(cfd);
 					pipe_write_end.erase(cfd);
 				}
@@ -184,7 +182,7 @@ int main(int argc, char* argv[]) {
 				}
 
 				string command = split(bufs[cfd], '\n')[0];
-				write_all(STDOUT_FILENO, (command + "\n").c_str(), (command + "\n").length());
+				//write_all(STDOUT_FILENO, (command + "\n").c_str(), (command + "\n").length());
 		
 				vector<string> commands = split(command, '|');
 				int cpipe[2];
@@ -230,19 +228,17 @@ int main(int argc, char* argv[]) {
 					}	
 				}
 				if (endlinePos + 1 < lastreaded) {
-					write_all(pipe_write_end[cfd], buf + endlinePos, lastreaded - endlinePos);
+					write_all(pipe_write_end[cfd], buf + endlinePos + 1, lastreaded - endlinePos - 1);
 				}
 			}	
 		};
 		my_ctl(epolfd, cfd, EPOLL_CTL_ADD, EPOLLIN, epoll_read);
 		
 		bufs[cfd] = "";
-		ttype[cfd] = 2;
 		already_execed[cfd] = false;
 	};
 	my_ctl(epolfd, sfd, EPOLL_CTL_ADD, EPOLLIN, epoll_accept);
 
-	ttype[sfd] = 1;
 	while (1) {
 		int nfds = epoll_wait(epolfd, events, MAX_CLIENTS, -1);
 		if (nfds < 0) {
@@ -252,11 +248,9 @@ int main(int argc, char* argv[]) {
 		}
 
 		for (int n = 0; n < nfds; n++) {
+			if (events[n].events == EPOLLERR) continue;
 			int curfd = ((my_epoll_data*)events[n].data.ptr)->fd;
-			int ctype = ttype[curfd];
-			if (ctype == 0) error("invalid epoll type");
 			((my_epoll_data*)events[n].data.ptr)->f(curfd);
-			if (!ttype.count(curfd)) delete (my_epoll_data*)events[n].data.ptr; // if process is ended then it is deleted from all maps
 		}
 	}	
 }
