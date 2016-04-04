@@ -140,6 +140,7 @@ int main(int argc, char* argv[]) {
 			return;
 		}
 
+		
 		function<void(int)> epoll_read = [&](int cfd){
 			if (already_execed[cfd]) {
 				ssize_t readed;
@@ -161,7 +162,7 @@ int main(int argc, char* argv[]) {
 				}
 				if (done) {
 					close(pipe_write_end[cfd]);
-					my_ctl_delete(epolfd, cfd);
+					my_ctl_del(epolfd, cfd);
 					close(cfd);
 					bufs.erase(cfd);
 					already_execed.erase(cfd);
@@ -232,12 +233,12 @@ int main(int argc, char* argv[]) {
 				}
 			}	
 		};
-		my_ctl(epolfd, cfd, EPOLL_CTL_ADD, EPOLLIN, epoll_read);
+		my_ctl_add(epolfd, cfd, EPOLLIN, epoll_read);
 		
 		bufs[cfd] = "";
 		already_execed[cfd] = false;
 	};
-	my_ctl(epolfd, sfd, EPOLL_CTL_ADD, EPOLLIN, epoll_accept);
+	my_ctl_add(epolfd, sfd, EPOLLIN, epoll_accept);
 
 	while (1) {
 		int nfds = epoll_wait(epolfd, events, MAX_CLIENTS, -1);

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sys/epoll.h>
 #include <functional>
+#include <map>
 
 using namespace std;
 
@@ -104,22 +105,40 @@ vector<string> split(string s, char c) {
 	}
 	return res;
 }
-
+int epolfd;
 int make_epoll(int MAX_CLIENTS) {
-	int epolfd = epoll_create(MAX_CLIENTS);
+	epolfd = epoll_create(MAX_CLIENTS);
 	if (epolfd < 0) error("error at creating epoll");
 	return epolfd;
 }
 
-void my_ctl(int efd, int fd, int op, uint32_t events, function<void(int)> f) {
-	struct epoll_event *nev = new struct epoll_event();
-	nev->events = events;
-	nev->data.ptr = new my_epoll_data(fd, f);
-	if (epoll_ctl(efd, op, fd, nev) < 0) error("error at my_ctl");
+map<int, epoll_event> cur_events;
+
+void my_ctl_add(int efd, int fd, uint32_t events, function<void(int)> f) {
+	cur_events[fd].events = events;
+	cur_events[fd].data.ptr = new my_epoll_data(fd, f);
+	//cerr << "add " << efd << " " << fd << endl;
+	if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &cur_events[fd]) < 0) error("error at my_ctl_add");
 }
 
-void my_ctl_delete(int efd, int fd) {
-	if (epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL) < 0) error("can't close epoll " + inttostr(fd), 0);
+void my_ctl_del(int efd, int fd) {
+	//cerr << "del " << efd << " " << fd << endl;
+	if (epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL) < 0) {
+		//cerr << errno << endl;
+		error("can't close epoll " + inttostr(fd), 0);
+	}
+	delete (my_epoll_data*)cur_events[fd].data.ptr;
+	cur_events.erase(fd);
+}
+
+void my_ctl_mod(int efd, int fd, uint32_t nw) {
+	cur_events[fd].events = nw;
+	//cerr << "mod " << efd << " " << fd << endl;
+	int res = epoll_ctl(efd, EPOLL_CTL_MOD, fd, &cur_events[fd]);
+	if (res < 0) {
+		//cerr << errno << endl;
+		error("can't mod ctl");
+	}
 }
 
 #endif
