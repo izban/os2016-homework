@@ -251,8 +251,10 @@ int main(int argc, char* argv[]) {
 							cur_stdin = pipefd[0];
 						}	
 					}
+					//cerr << endlinePos << " " << lastreaded << endl;
 					if (endlinePos + 1 < lastreaded) {
 						write_all(pipe_write_end[cfd], buf + endlinePos, lastreaded - endlinePos);
+						//write_all(STDOUT_FILENO, buf + endlinePos, lastreaded - endlinePos);
 					}
 				}	
 			}
