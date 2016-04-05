@@ -15,6 +15,7 @@
 #include <map>
 #include <signal.h>
 #include <sys/wait.h>
+#include "buffer.h"
 
 using namespace std;
 
@@ -140,15 +141,17 @@ int main(int argc, char* argv[]) {
 			return;
 		}
 
-		
-		function<void(int)> epoll_read = [&](int cfd){
+		buffer *tmp;
+		function<void(int)> epoll_read = [&, tmp](int cfd) mutable {
 			if (already_execed[cfd]) {
 				ssize_t readed;
 				int pd = pipe_write_end[cfd];
 				while (1) {
 					readed = read_eintr(cfd, buf, MAX_COMMAND_LEN);
 					if (readed <= 0) break;
-					write_all(pd, buf, readed); // TODO: maybe should use epoll
+					buf[readed] = 0;
+					//write_all(pd, buf, readed); // TODO: maybe should use epoll
+					tmp->append((string)buf);
 				}
 				bool done = 0;
 				if (readed < 0) {
@@ -161,12 +164,12 @@ int main(int argc, char* argv[]) {
 					done = 1;
 				}
 				if (done) {
-					close(pipe_write_end[cfd]);
-					my_ctl_del(epolfd, cfd);
-					close(cfd);
+					tmp->input_ended = 1;
+					tmp->append("");
 					bufs.erase(cfd);
 					already_execed.erase(cfd);
 					pipe_write_end.erase(cfd);
+					my_ctl_del(epolfd, cfd);
 				}
 			} else {
 				ssize_t readed;
@@ -181,6 +184,7 @@ int main(int argc, char* argv[]) {
 				if (endlinePos == -1) {
 					return;
 				}
+				buf[lastreaded] = 0;
 
 				string command = split(bufs[cfd], '\n')[0];
 				//write_all(STDOUT_FILENO, (command + "\n").c_str(), (command + "\n").length());
@@ -228,8 +232,10 @@ int main(int argc, char* argv[]) {
 						cur_stdin = pipefd[0];
 					}	
 				}
+				tmp = new buffer(cpipe[1]);
 				if (endlinePos + 1 < lastreaded) {
-					write_all(pipe_write_end[cfd], buf + endlinePos + 1, lastreaded - endlinePos - 1);
+					//write_all(pipe_write_end[cfd], buf + endlinePos + 1, lastreaded - endlinePos - 1);
+					tmp->append((string)(buf + endlinePos + 1));
 				}
 			}	
 		};

@@ -129,6 +129,7 @@ void my_ctl_del(int efd, int fd) {
 	}
 	delete (my_epoll_data*)cur_events[fd].data.ptr;
 	cur_events.erase(fd);
+	close(fd);
 }
 
 void my_ctl_mod(int efd, int fd, uint32_t nw) {
@@ -136,8 +137,8 @@ void my_ctl_mod(int efd, int fd, uint32_t nw) {
 	//cerr << "mod " << efd << " " << fd << endl;
 	int res = epoll_ctl(efd, EPOLL_CTL_MOD, fd, &cur_events[fd]);
 	if (res < 0) {
-		//cerr << errno << endl;
-		error("can't mod ctl");
+		cerr << errno << endl;
+		//error("can't mod ctl");
 	}
 }
 
